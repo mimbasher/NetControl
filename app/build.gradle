@@ -10,8 +10,8 @@ android {
         applicationId 'com.alex.netcontrol'
         minSdk 26
         targetSdk 33
-        versionCode 1
-        versionName '1.0'
+        versionCode 2
+        versionName '2.0'
     }
 
     compileOptions {
@@ -22,4 +22,9 @@ android {
     lint {
         abortOnError false
     }
+}
+
+dependencies {
+    implementation 'dev.rikka.shizuku:api:13.1.5'
+    implementation 'dev.rikka.shizuku:provider:13.1.5'
 }

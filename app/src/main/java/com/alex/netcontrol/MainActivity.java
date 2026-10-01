@@ -2,12 +2,9 @@ package com.alex.netcontrol;
 
 import android.Manifest;
 import android.app.Activity;
-import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
-import android.net.VpnService;
-import android.os.Build;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
@@ -24,19 +21,38 @@ import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.TextView;
 
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
+import rikka.shizuku.Shizuku;
+
+/**
+ * Blocks an app's internet (Wi-Fi AND mobile data) with no VPN.
+ * Uses Shizuku to run Android's own system firewall command:
+ *   cmd connectivity set-package-networking-enabled false <package>
+ * Rules are cleared on reboot; tap "Re-apply blocks" after starting Shizuku.
+ */
 public class MainActivity extends Activity {
-    private static final int REQ_VPN = 1;
+    private static final String PREFS = "netcontrol";
+    private static final String KEY_BLOCK = "block:";
+    private static final int REQ_SHIZUKU = 7;
 
     private SharedPreferences prefs;
     private final List<App> all = new ArrayList<>();
     private final List<App> shown = new ArrayList<>();
+    private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private AppAdapter adapter;
-    private Button toggle;
+    private TextView status;
+    private TextView log;
     private String filter = "";
 
     static class App {
@@ -48,23 +64,33 @@ public class MainActivity extends Activity {
     static class Holder {
         ImageView icon;
         TextView name;
-        CheckBox wifi;
-        CheckBox data;
+        CheckBox block;
     }
+
+    private final Shizuku.OnBinderReceivedListener binderReceived = () -> runOnUiThread(this::updateStatus);
+    private final Shizuku.OnBinderDeadListener binderDead = () -> runOnUiThread(this::updateStatus);
+    private final Shizuku.OnRequestPermissionResultListener permResult =
+            (code, result) -> runOnUiThread(this::updateStatus);
 
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
-        prefs = getSharedPreferences(FirewallVpnService.PREFS, MODE_PRIVATE);
+        prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp(12), dp(12), dp(12), dp(12));
         root.setFitsSystemWindows(true);
 
-        toggle = new Button(this);
-        toggle.setOnClickListener(v -> onToggle());
-        root.addView(toggle);
+        status = new TextView(this);
+        status.setPadding(0, 0, 0, dp(6));
+        status.setOnClickListener(v -> requestShizuku());
+        root.addView(status);
+
+        Button reapply = new Button(this);
+        reapply.setText("Re-apply blocks (after reboot)");
+        reapply.setOnClickListener(v -> reapplyAll());
+        root.addView(reapply);
 
         EditText search = new EditText(this);
         search.setHint("Search apps");
@@ -79,10 +105,11 @@ public class MainActivity extends Activity {
         });
         root.addView(search);
 
-        TextView hint = new TextView(this);
-        hint.setText("Tick a box to BLOCK that app on Wi-Fi and/or mobile data.");
-        hint.setPadding(0, dp(8), 0, dp(8));
-        root.addView(hint);
+        log = new TextView(this);
+        log.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        log.setPadding(0, dp(6), 0, dp(6));
+        log.setText("Tick Block to cut an app off Wi-Fi and mobile data.");
+        root.addView(log);
 
         ListView list = new ListView(this);
         adapter = new AppAdapter();
@@ -91,27 +118,123 @@ public class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
         setContentView(root);
-        updateToggle();
 
-        if (Build.VERSION.SDK_INT >= 33) {
-            requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 2);
-        }
+        Shizuku.addBinderReceivedListenerSticky(binderReceived);
+        Shizuku.addBinderDeadListener(binderDead);
+        Shizuku.addRequestPermissionResultListener(permResult);
+        updateStatus();
 
         new Thread(this::loadApps).start();
     }
 
     @Override
-    protected void onResume() {
-        super.onResume();
-        updateToggle();
+    protected void onDestroy() {
+        Shizuku.removeBinderReceivedListener(binderReceived);
+        Shizuku.removeBinderDeadListener(binderDead);
+        Shizuku.removeRequestPermissionResultListener(permResult);
+        worker.shutdown();
+        super.onDestroy();
     }
+
+    // ---------- Shizuku ----------
+
+    private boolean shizukuRunning() {
+        try { return Shizuku.pingBinder(); } catch (Throwable t) { return false; }
+    }
+
+    private boolean shizukuReady() {
+        return shizukuRunning()
+                && Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private void updateStatus() {
+        if (!shizukuRunning()) {
+            status.setText("⚠ Shizuku is not running. Open the Shizuku app and start it.");
+        } else if (!shizukuReady()) {
+            status.setText("⚠ Tap here to allow NetControl in Shizuku.");
+        } else {
+            status.setText("✓ Shizuku connected");
+        }
+    }
+
+    private void requestShizuku() {
+        if (shizukuRunning() && !shizukuReady()) Shizuku.requestPermission(REQ_SHIZUKU);
+        updateStatus();
+    }
+
+    /** Runs a command with shell (ADB) privileges through Shizuku. */
+    private static String run(String... cmd) {
+        try {
+            Method m = Shizuku.class.getDeclaredMethod(
+                    "newProcess", String[].class, String[].class, String.class);
+            m.setAccessible(true);
+            Process p = (Process) m.invoke(null, cmd, null, null);
+            String out = (read(p.getInputStream()) + read(p.getErrorStream())).trim();
+            int code = p.waitFor();
+            return code == 0 ? (out.isEmpty() ? "OK" : out) : "exit " + code + ": " + out;
+        } catch (Throwable t) {
+            return "error: " + t;
+        }
+    }
+
+    private static String read(InputStream in) throws Exception {
+        StringBuilder sb = new StringBuilder();
+        try (BufferedReader r = new BufferedReader(new InputStreamReader(in))) {
+            String line;
+            while ((line = r.readLine()) != null) sb.append(line).append('\n');
+        }
+        return sb.toString();
+    }
+
+    private static String setBlocked(String pkg, boolean blocked) {
+        String chain = run("cmd", "connectivity", "set-chain3-enabled", "true");
+        String rule = run("cmd", "connectivity", "set-package-networking-enabled",
+                blocked ? "false" : "true", pkg);
+        return chain.equals("OK") ? rule : chain + " | " + rule;
+    }
+
+    private void apply(App a, boolean blocked) {
+        if (!shizukuReady()) {
+            updateStatus();
+            log.setText("Saved, but not applied: Shizuku isn't connected.");
+            return;
+        }
+        worker.execute(() -> {
+            String result = setBlocked(a.pkg, blocked);
+            runOnUiThread(() -> log.setText(
+                    (blocked ? "Blocked " : "Unblocked ") + a.label + " → " + result));
+        });
+    }
+
+    private void reapplyAll() {
+        if (!shizukuReady()) { requestShizuku(); return; }
+        List<String> pkgs = new ArrayList<>();
+        for (Map.Entry<String, ?> e : prefs.getAll().entrySet()) {
+            if (e.getKey().startsWith(KEY_BLOCK) && Boolean.TRUE.equals(e.getValue())) {
+                pkgs.add(e.getKey().substring(KEY_BLOCK.length()));
+            }
+        }
+        log.setText("Re-applying " + pkgs.size() + " blocks…");
+        worker.execute(() -> {
+            String last = "nothing to apply";
+            int ok = 0;
+            for (String pkg : pkgs) {
+                last = setBlocked(pkg, true);
+                if (last.equals("OK")) ok++;
+            }
+            final String msg = "Re-applied " + ok + "/" + pkgs.size()
+                    + (ok == pkgs.size() ? "" : " — last result: " + last);
+            runOnUiThread(() -> log.setText(msg));
+        });
+    }
+
+    // ---------- App list ----------
 
     private void loadApps() {
         PackageManager pm = getPackageManager();
         List<App> found = new ArrayList<>();
         for (ApplicationInfo ai : pm.getInstalledApplications(0)) {
             if (ai.packageName.equals(getPackageName())) continue;
-            // Only apps that can use the internet at all.
             if (pm.checkPermission(Manifest.permission.INTERNET, ai.packageName)
                     != PackageManager.PERMISSION_GRANTED) continue;
             App a = new App();
@@ -138,54 +261,6 @@ public class MainActivity extends Activity {
             }
         }
         adapter.notifyDataSetChanged();
-    }
-
-    private boolean isEnabled() {
-        return prefs.getBoolean(FirewallVpnService.KEY_ENABLED, false);
-    }
-
-    private void onToggle() {
-        if (isEnabled()) {
-            startService(new Intent(this, FirewallVpnService.class)
-                    .setAction(FirewallVpnService.ACTION_STOP));
-            prefs.edit().putBoolean(FirewallVpnService.KEY_ENABLED, false).apply();
-            updateToggle();
-        } else {
-            Intent consent = VpnService.prepare(this);
-            if (consent != null) {
-                startActivityForResult(consent, REQ_VPN);
-            } else {
-                onActivityResult(REQ_VPN, RESULT_OK, null);
-            }
-        }
-    }
-
-    @Override
-    protected void onActivityResult(int request, int result, Intent data) {
-        super.onActivityResult(request, result, data);
-        if (request == REQ_VPN && result == RESULT_OK) {
-            prefs.edit().putBoolean(FirewallVpnService.KEY_ENABLED, true).apply();
-            startForegroundService(new Intent(this, FirewallVpnService.class));
-            updateToggle();
-        }
-    }
-
-    private void updateToggle() {
-        toggle.setText(isEnabled()
-                ? "Firewall ON — tap to turn off"
-                : "Firewall OFF — tap to turn on");
-    }
-
-    private void bind(CheckBox cb, String key) {
-        cb.setOnCheckedChangeListener(null);
-        cb.setChecked(prefs.getBoolean(key, false));
-        cb.setOnCheckedChangeListener((button, checked) -> {
-            prefs.edit().putBoolean(key, checked).apply();
-            if (isEnabled()) {
-                startService(new Intent(this, FirewallVpnService.class)
-                        .setAction(FirewallVpnService.ACTION_RELOAD));
-            }
-        });
     }
 
     private int dp(int v) {
@@ -216,13 +291,9 @@ public class MainActivity extends Activity {
                 l.addView(h.name, new LinearLayout.LayoutParams(
                         0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
-                h.wifi = new CheckBox(MainActivity.this);
-                h.wifi.setText("Wi-Fi");
-                l.addView(h.wifi);
-
-                h.data = new CheckBox(MainActivity.this);
-                h.data.setText("Data");
-                l.addView(h.data);
+                h.block = new CheckBox(MainActivity.this);
+                h.block.setText("Block");
+                l.addView(h.block);
 
                 l.setTag(h);
                 row = l;
@@ -233,8 +304,14 @@ public class MainActivity extends Activity {
             App a = shown.get(pos);
             h.icon.setImageDrawable(a.info.loadIcon(getPackageManager()));
             h.name.setText(a.label);
-            bind(h.wifi, FirewallVpnService.KEY_WIFI + a.pkg);
-            bind(h.data, FirewallVpnService.KEY_DATA + a.pkg);
+
+            String key = KEY_BLOCK + a.pkg;
+            h.block.setOnCheckedChangeListener(null);
+            h.block.setChecked(prefs.getBoolean(key, false));
+            h.block.setOnCheckedChangeListener((b, checked) -> {
+                prefs.edit().putBoolean(key, checked).apply();
+                apply(a, checked);
+            });
             return row;
         }
     }
