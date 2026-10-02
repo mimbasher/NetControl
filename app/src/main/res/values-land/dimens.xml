@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Vertical space is scarce in landscape, so tighten the header. -->
+    <dimen name="card_padding">12dp</dimen>
+    <dimen name="header_gap">6dp</dimen>
+    <dimen name="row_padding_v">8dp</dimen>
+</resources>

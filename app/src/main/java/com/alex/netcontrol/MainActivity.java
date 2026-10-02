@@ -35,6 +35,7 @@ import java.io.InputStreamReader;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -74,6 +75,11 @@ public class MainActivity extends AppCompatActivity {
     private static final int S_UNKNOWN = 0, S_ENFORCED = 1, S_NOT_ENFORCED = 2;
 
     private static boolean autoAppliedThisProcess = false;
+
+    // Folding, unfolding and rotating recreate the Activity but not the
+    // process, so verified state is cached here instead of being lost.
+    private static final Map<String, Integer> STATE_CACHE = new HashMap<>();
+    private static final Map<String, String> DETAIL_CACHE = new HashMap<>();
 
     private SharedPreferences prefs;
     private final List<App> all = new ArrayList<>();
@@ -321,11 +327,10 @@ public class MainActivity extends AppCompatActivity {
     private void toggle(App a, boolean blocked) {
         a.wanted = blocked;
         prefs.edit().putBoolean(KEY_BLOCK + a.pkg, blocked).apply();
-        a.state = S_UNKNOWN;
-        a.detail = null;
+        setState(a, S_UNKNOWN, null);
 
         if (!shizukuReady()) {
-            a.detail = "Saved. Start Shizuku to apply";
+            setState(a, S_UNKNOWN, "Saved. Start Shizuku to apply");
             adapter.notifyDataSetChanged();
             updateStatus();
             toast("Not applied: Shizuku isn't connected");
@@ -339,14 +344,15 @@ public class MainActivity extends AppCompatActivity {
             int state = queryState(a.pkg, blocked, raw);
 
             runOnUiThread(() -> {
-                a.state = state;
+                String detail;
                 if (state == S_ENFORCED) {
-                    a.detail = blocked ? "Blocked, enforced by the kernel" : null;
+                    detail = blocked ? "Blocked, enforced by the kernel" : null;
                 } else if (state == S_NOT_ENFORCED) {
-                    a.detail = "Command ran but the rule did not stick";
+                    detail = "Command ran but the rule did not stick";
                 } else {
-                    a.detail = "Could not read state: " + raw[0];
+                    detail = "Could not read state: " + raw[0];
                 }
+                setState(a, state, detail);
                 adapter.notifyDataSetChanged();
                 refreshSummary();
 
@@ -382,10 +388,9 @@ public class MainActivity extends AppCompatActivity {
                 if (st == S_ENFORCED) ok++; else lastErr = raw[0];
                 App a = find(pkg);
                 if (a != null) {
-                    a.state = st;
-                    a.detail = st == S_ENFORCED
+                    setState(a, st, st == S_ENFORCED
                             ? "Blocked, enforced by the kernel"
-                            : "Not enforced: " + raw[0];
+                            : "Not enforced: " + raw[0]);
                 }
             }
             final int good = ok;
@@ -418,12 +423,11 @@ public class MainActivity extends AppCompatActivity {
                 if (st == S_ENFORCED) enforced++;
                 App a = find(pkg);
                 if (a != null) {
-                    a.state = st;
-                    a.detail = st == S_ENFORCED
+                    setState(a, st, st == S_ENFORCED
                             ? "Blocked, enforced by the kernel"
                             : st == S_NOT_ENFORCED
                                 ? "NOT enforced. Tap Re-apply blocks"
-                                : "Unreadable: " + raw[0];
+                                : "Unreadable: " + raw[0]);
                 }
             }
             final int good = enforced;
@@ -435,6 +439,15 @@ public class MainActivity extends AppCompatActivity {
                         : good + "/" + pkgs.size() + " still enforced");
             });
         });
+    }
+
+    /** Writes row state and remembers it across configuration changes. */
+    private static void setState(App a, int state, String detail) {
+        a.state = state;
+        a.detail = detail;
+        STATE_CACHE.put(a.pkg, state);
+        if (detail == null) DETAIL_CACHE.remove(a.pkg);
+        else DETAIL_CACHE.put(a.pkg, detail);
     }
 
     private App find(String pkg) {
@@ -461,6 +474,11 @@ public class MainActivity extends AppCompatActivity {
             a.label = String.valueOf(ai.loadLabel(pm));
             a.system = (ai.flags & ApplicationInfo.FLAG_SYSTEM) != 0;
             a.wanted = prefs.getBoolean(KEY_BLOCK + a.pkg, false);
+            Integer cached = STATE_CACHE.get(a.pkg);
+            if (cached != null) {
+                a.state = cached;
+                a.detail = DETAIL_CACHE.get(a.pkg);
+            }
             found.add(a);
         }
         Collections.sort(found, (x, y) -> x.label.compareToIgnoreCase(y.label));

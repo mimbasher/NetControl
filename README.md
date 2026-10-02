@@ -126,6 +126,19 @@ network access. It cannot phone home because it cannot reach a network.
 To get updates automatically, point [Obtainium](https://github.com/ImranR98/Obtainium)
 at this repository. It watches Releases and installs new versions for you.
 
+## Screen sizes
+
+Laid out for phones, unfolded foldables and tablets. Past 600dp wide the content
+column is centred with side gutters that grow with the screen, so rows do not
+stretch edge to edge and the switch stays beside its label instead of drifting
+across the display. Landscape uses a tighter header to keep more of the list
+visible. Verified on a 7.6in foldable profile at 674dp portrait and 841dp
+landscape.
+
+Folding, unfolding and rotating all recreate the Activity, so verified kernel
+state is cached per package and restored, rather than the green lines vanishing
+until you re-check.
+
 ## Limitations
 
 - Blocks are cleared by a reboot, then re-applied when you next open the app.

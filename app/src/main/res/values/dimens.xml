@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Extra side padding so content does not stretch edge to edge on wide
+         screens such as an unfolded foldable or a tablet. -->
+    <dimen name="screen_gutter">0dp</dimen>
+    <dimen name="card_padding">16dp</dimen>
+    <dimen name="header_gap">10dp</dimen>
+    <dimen name="row_padding_v">10dp</dimen>
+</resources>
