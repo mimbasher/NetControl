@@ -19,7 +19,7 @@ cmd connectivity set-chain3-enabled true
 cmd connectivity set-package-networking-enabled false <package>
 ```
 
-That writes the app's UID into a kernel BPF firewall map owned by `netd` — the
+That writes the app's UID into a kernel BPF firewall map owned by `netd`, the
 same machinery the OS uses for Data Saver. The block is enforced below the app
 layer, so it covers Wi-Fi and cellular identically and costs no battery.
 
@@ -50,9 +50,9 @@ kernel state**, read straight back after every write:
 
 | | |
 |---|---|
-| *Blocked — enforced by the kernel* | the rule is live |
+| *Blocked, enforced by the kernel* | the rule is live |
 | *Command ran but the rule did not stick* | the write was rejected; the app is **not** blocked |
-| *Could not read state: …* | the command failed — the raw error is shown |
+| *Could not read state: …* | the command failed, and the raw error is shown |
 
 The header counts anything that is **NOT enforced**, so a silent failure can't
 hide. **⋮ → Verify blocks** re-reads every saved block without changing
@@ -62,7 +62,7 @@ Once you're done, stop Shizuku. Your blocks remain.
 
 ## After a reboot
 
-Start Shizuku (step 4 — no re-pairing needed) and open NetControl. Saved blocks
+Start Shizuku (step 4, no re-pairing needed) and open NetControl. Saved blocks
 are **re-applied automatically** on launch. Then stop Shizuku again.
 
 **⋮ → Re-apply blocks** does the same thing manually if you need it.
@@ -72,7 +72,7 @@ are **re-applied automatically** on launch. Then stop Shizuku again.
 Two things are device-specific and worth checking once:
 
 - **Shizuku grants shell UID (2000), not root.** If your ROM gates these
-  `cmd connectivity` commands behind root, every toggle fails — the row will say
+  `cmd connectivity` commands behind root, every toggle fails. The row will say
   so and show the error.
 - **OEM_DENY_3 is a vendor chain.** If your OEM uses it too, it could overwrite
   NetControl's rules when it recomputes network policy.
@@ -80,21 +80,21 @@ Two things are device-specific and worth checking once:
 To check both:
 
 1. Block a browser. Confirm the row turns green and the browser has no internet.
-2. Force-stop Shizuku. Reload a page — still dead means persistence works.
+2. Force-stop Shizuku. Reload a page. Still dead means persistence works.
 3. Toggle Wi-Fi off and on, then **Verify blocks**. Still enforced means your
    OEM isn't clobbering the chain.
 
 ## Build
 
 CI builds a debug APK on every push and attaches it to a
-[Release](../../releases). Locally you need **JDK 17** (not newer — AGP 8.5.2
+[Release](../../releases). Locally you need **JDK 17** (not newer, since AGP 8.5.2
 won't run on it) and an Android SDK with platform 34:
 
 ```
 ./gradlew assembleDebug
 ```
 
-> Installing over an older NetControl fails with a signature mismatch — the CI
+> Installing over an older NetControl fails with a signature mismatch, because the CI
 > debug key differs from earlier builds. Uninstall first.
 
 ## Limitations

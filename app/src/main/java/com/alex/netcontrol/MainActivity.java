@@ -208,7 +208,7 @@ public class MainActivity extends AppCompatActivity {
             statusAction.setVisibility(View.VISIBLE);
         } else {
             statusTitle.setText("Shizuku connected");
-            statusBody.setText("Blocks applied now survive stopping Shizuku — but not a reboot.");
+            statusBody.setText("Blocks applied now survive stopping Shizuku, but not a reboot.");
             statusAction.setVisibility(View.GONE);
         }
     }
@@ -304,7 +304,7 @@ public class MainActivity extends AppCompatActivity {
         a.detail = null;
 
         if (!shizukuReady()) {
-            a.detail = "Saved — start Shizuku to apply";
+            a.detail = "Saved. Start Shizuku to apply";
             adapter.notifyDataSetChanged();
             updateStatus();
             toast("Not applied: Shizuku isn't connected");
@@ -320,7 +320,7 @@ public class MainActivity extends AppCompatActivity {
             runOnUiThread(() -> {
                 a.state = state;
                 if (state == S_ENFORCED) {
-                    a.detail = blocked ? "Blocked — enforced by the kernel" : null;
+                    a.detail = blocked ? "Blocked, enforced by the kernel" : null;
                 } else if (state == S_NOT_ENFORCED) {
                     a.detail = "Command ran but the rule did not stick";
                 } else {
@@ -334,7 +334,7 @@ public class MainActivity extends AppCompatActivity {
                 } else {
                     String why = !"OK".equals(chain) ? chain
                             : (!"OK".equals(write) ? write : raw[0]);
-                    toast("Failed on " + a.label + " — " + why);
+                    toast("Failed on " + a.label + ": " + why);
                 }
             });
         });
@@ -363,7 +363,7 @@ public class MainActivity extends AppCompatActivity {
                 if (a != null) {
                     a.state = st;
                     a.detail = st == S_ENFORCED
-                            ? "Blocked — enforced by the kernel"
+                            ? "Blocked, enforced by the kernel"
                             : "Not enforced: " + raw[0];
                 }
             }
@@ -375,7 +375,7 @@ public class MainActivity extends AppCompatActivity {
                 if (good == pkgs.size()) {
                     toast("All " + good + " block(s) active");
                 } else {
-                    toast(good + "/" + pkgs.size() + " active — "
+                    toast(good + "/" + pkgs.size() + " active, last error: "
                             + (!"OK".equals(chain) ? chain : String.valueOf(err)));
                 }
             });
@@ -399,9 +399,9 @@ public class MainActivity extends AppCompatActivity {
                 if (a != null) {
                     a.state = st;
                     a.detail = st == S_ENFORCED
-                            ? "Blocked — enforced by the kernel"
+                            ? "Blocked, enforced by the kernel"
                             : st == S_NOT_ENFORCED
-                                ? "NOT enforced — tap Re-apply blocks"
+                                ? "NOT enforced. Tap Re-apply blocks"
                                 : "Unreadable: " + raw[0];
                 }
             }
