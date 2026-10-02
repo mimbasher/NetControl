@@ -3,6 +3,9 @@ name: Build APK
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
   workflow_dispatch:
 
 permissions:
