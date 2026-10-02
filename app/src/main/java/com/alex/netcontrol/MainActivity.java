@@ -1,25 +1,33 @@
 package com.alex.netcontrol;
 
 import android.Manifest;
-import android.app.Activity;
 import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
+import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
-import android.util.TypedValue;
-import android.view.Gravity;
+import android.view.LayoutInflater;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.BaseAdapter;
-import android.widget.Button;
-import android.widget.CheckBox;
-import android.widget.EditText;
 import android.widget.ImageView;
-import android.widget.LinearLayout;
-import android.widget.ListView;
 import android.widget.TextView;
+
+import androidx.annotation.NonNull;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
+
+import com.google.android.material.appbar.MaterialToolbar;
+import com.google.android.material.button.MaterialButton;
+import com.google.android.material.chip.ChipGroup;
+import com.google.android.material.color.DynamicColors;
+import com.google.android.material.materialswitch.MaterialSwitch;
+import com.google.android.material.snackbar.Snackbar;
+import com.google.android.material.textfield.TextInputEditText;
 
 import java.io.BufferedReader;
 import java.io.InputStream;
@@ -27,104 +35,133 @@ import java.io.InputStreamReader;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import rikka.shizuku.Shizuku;
 
 /**
- * Blocks an app's internet (Wi-Fi AND mobile data) with no VPN.
- * Uses Shizuku to run Android's own system firewall command:
+ * Cuts an app off Wi-Fi AND mobile data with no VPN and no root.
+ *
+ * Mechanism: Shizuku lends us shell (ADB) privileges just long enough to run
+ * Android's own firewall commands, which write the app's UID into a kernel BPF
+ * firewall map:
+ *
+ *   cmd connectivity set-chain3-enabled true
  *   cmd connectivity set-package-networking-enabled false <package>
- * Rules are cleared on reboot; tap "Re-apply blocks" after starting Shizuku.
+ *
+ * The rule then lives in the kernel, not in this app and not in Shizuku, so
+ * Shizuku can be stopped afterwards and the block stays. A reboot clears it.
+ *
+ * Every write is read straight back with get-package-networking-enabled, so the
+ * UI shows the real kernel state rather than just what you ticked.
  */
-public class MainActivity extends Activity {
+public class MainActivity extends AppCompatActivity {
+
     private static final String PREFS = "netcontrol";
     private static final String KEY_BLOCK = "block:";
     private static final int REQ_SHIZUKU = 7;
+
+    // Filters
+    private static final int F_ALL = 0, F_BLOCKED = 1, F_USER = 2, F_SYSTEM = 3;
+
+    // Verified kernel state for one package
+    private static final int S_UNKNOWN = 0, S_ENFORCED = 1, S_NOT_ENFORCED = 2;
+
+    private static boolean autoAppliedThisProcess = false;
 
     private SharedPreferences prefs;
     private final List<App> all = new ArrayList<>();
     private final List<App> shown = new ArrayList<>();
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
+    private final ExecutorService icons = Executors.newFixedThreadPool(3);
+
     private AppAdapter adapter;
-    private TextView status;
-    private TextView log;
-    private String filter = "";
+    private View root;
+    private TextView statusTitle, statusBody, summary;
+    private ImageView statusIcon;
+    private MaterialButton statusAction;
+    private RecyclerView list;
+
+    private String query = "";
+    private int filter = F_ALL;
 
     static class App {
         ApplicationInfo info;
         String pkg;
         String label;
+        boolean system;
+        boolean wanted;
+        int state = S_UNKNOWN;
+        String detail;
+        Drawable icon;
     }
 
-    static class Holder {
-        ImageView icon;
-        TextView name;
-        CheckBox block;
-    }
-
-    private final Shizuku.OnBinderReceivedListener binderReceived = () -> runOnUiThread(this::updateStatus);
-    private final Shizuku.OnBinderDeadListener binderDead = () -> runOnUiThread(this::updateStatus);
+    private final Shizuku.OnBinderReceivedListener binderReceived =
+            () -> runOnUiThread(() -> { updateStatus(); maybeAutoApply(); });
+    private final Shizuku.OnBinderDeadListener binderDead =
+            () -> runOnUiThread(this::updateStatus);
     private final Shizuku.OnRequestPermissionResultListener permResult =
-            (code, result) -> runOnUiThread(this::updateStatus);
+            (code, result) -> runOnUiThread(() -> { updateStatus(); maybeAutoApply(); });
 
     @Override
-    protected void onCreate(Bundle state) {
-        super.onCreate(state);
+    protected void onCreate(Bundle saved) {
+        super.onCreate(saved);
+        DynamicColors.applyToActivityIfAvailable(this);
+        setContentView(R.layout.activity_main);
+
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        root = findViewById(R.id.coordinator);
+        statusTitle = findViewById(R.id.statusTitle);
+        statusBody = findViewById(R.id.statusBody);
+        statusIcon = findViewById(R.id.statusIcon);
+        statusAction = findViewById(R.id.statusAction);
+        summary = findViewById(R.id.summary);
+        list = findViewById(R.id.list);
 
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(12), dp(12), dp(12), dp(12));
-        root.setFitsSystemWindows(true);
+        MaterialToolbar toolbar = findViewById(R.id.toolbar);
+        toolbar.inflateMenu(R.menu.main);
+        toolbar.setOnMenuItemClickListener(this::onMenu);
 
-        status = new TextView(this);
-        status.setPadding(0, 0, 0, dp(6));
-        status.setOnClickListener(v -> requestShizuku());
-        root.addView(status);
+        adapter = new AppAdapter();
+        list.setLayoutManager(new LinearLayoutManager(this));
+        list.setAdapter(adapter);
+        list.setHasFixedSize(false);
 
-        Button reapply = new Button(this);
-        reapply.setText("Re-apply blocks (after reboot)");
-        reapply.setOnClickListener(v -> reapplyAll());
-        root.addView(reapply);
-
-        EditText search = new EditText(this);
-        search.setHint("Search apps");
-        search.setSingleLine(true);
+        TextInputEditText search = findViewById(R.id.search);
         search.addTextChangedListener(new TextWatcher() {
             public void beforeTextChanged(CharSequence s, int a, int b, int c) { }
             public void onTextChanged(CharSequence s, int a, int b, int c) { }
             public void afterTextChanged(Editable s) {
-                filter = s.toString().trim().toLowerCase(Locale.ROOT);
+                query = s.toString().trim().toLowerCase(Locale.ROOT);
                 applyFilter();
             }
         });
-        root.addView(search);
 
-        log = new TextView(this);
-        log.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
-        log.setPadding(0, dp(6), 0, dp(6));
-        log.setText("Tick Block to cut an app off Wi-Fi and mobile data.");
-        root.addView(log);
+        ChipGroup filters = findViewById(R.id.filters);
+        filters.setOnCheckedStateChangeListener((group, ids) -> {
+            if (ids.isEmpty()) return;
+            int id = ids.get(0);
+            if (id == R.id.chipBlocked) filter = F_BLOCKED;
+            else if (id == R.id.chipUser) filter = F_USER;
+            else if (id == R.id.chipSystem) filter = F_SYSTEM;
+            else filter = F_ALL;
+            applyFilter();
+        });
 
-        ListView list = new ListView(this);
-        adapter = new AppAdapter();
-        list.setAdapter(adapter);
-        root.addView(list, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
-
-        setContentView(root);
+        statusAction.setOnClickListener(v -> requestShizuku());
 
         Shizuku.addBinderReceivedListenerSticky(binderReceived);
         Shizuku.addBinderDeadListener(binderDead);
         Shizuku.addRequestPermissionResultListener(permResult);
-        updateStatus();
 
-        new Thread(this::loadApps).start();
+        updateStatus();
+        worker.execute(this::loadApps);
     }
 
     @Override
@@ -132,8 +169,16 @@ public class MainActivity extends Activity {
         Shizuku.removeBinderReceivedListener(binderReceived);
         Shizuku.removeBinderDeadListener(binderDead);
         Shizuku.removeRequestPermissionResultListener(permResult);
-        worker.shutdown();
+        worker.shutdownNow();
+        icons.shutdownNow();
         super.onDestroy();
+    }
+
+    private boolean onMenu(MenuItem item) {
+        int id = item.getItemId();
+        if (id == R.id.action_verify) { verifyAll(); return true; }
+        if (id == R.id.action_reapply) { reapplyAll(false); return true; }
+        return false;
     }
 
     // ---------- Shizuku ----------
@@ -143,37 +188,68 @@ public class MainActivity extends Activity {
     }
 
     private boolean shizukuReady() {
-        return shizukuRunning()
-                && Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED;
+        try {
+            return shizukuRunning()
+                    && Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED;
+        } catch (Throwable t) {
+            return false;
+        }
     }
 
     private void updateStatus() {
         if (!shizukuRunning()) {
-            status.setText("⚠ Shizuku is not running. Open the Shizuku app and start it.");
+            statusTitle.setText("Shizuku is not running");
+            statusBody.setText("Existing blocks stay active. Start Shizuku only to change them.");
+            statusAction.setVisibility(View.GONE);
         } else if (!shizukuReady()) {
-            status.setText("⚠ Tap here to allow NetControl in Shizuku.");
+            statusTitle.setText("Permission needed");
+            statusBody.setText("Let NetControl use Shizuku to run the firewall commands.");
+            statusAction.setText("Allow");
+            statusAction.setVisibility(View.VISIBLE);
         } else {
-            status.setText("✓ Shizuku connected");
+            statusTitle.setText("Shizuku connected");
+            statusBody.setText("Blocks applied now survive stopping Shizuku — but not a reboot.");
+            statusAction.setVisibility(View.GONE);
         }
     }
 
     private void requestShizuku() {
-        if (shizukuRunning() && !shizukuReady()) Shizuku.requestPermission(REQ_SHIZUKU);
+        if (shizukuRunning() && !shizukuReady()) {
+            try { Shizuku.requestPermission(REQ_SHIZUKU); } catch (Throwable ignored) { }
+        }
         updateStatus();
     }
 
-    /** Runs a command with shell (ADB) privileges through Shizuku. */
+    /** Re-applies saved blocks once per process launch, to cover a reboot. */
+    private void maybeAutoApply() {
+        if (autoAppliedThisProcess || !shizukuReady()) return;
+        if (all.isEmpty()) return; // wait for the app list so rows can show their state
+        if (blockedFromPrefs().isEmpty()) { autoAppliedThisProcess = true; return; }
+        autoAppliedThisProcess = true;
+        reapplyAll(true);
+    }
+
+    // ---------- Shell ----------
+
+    /** Runs one command with shell (ADB) privileges through Shizuku. */
     private static String run(String... cmd) {
+        Process p = null;
         try {
             Method m = Shizuku.class.getDeclaredMethod(
                     "newProcess", String[].class, String[].class, String.class);
             m.setAccessible(true);
-            Process p = (Process) m.invoke(null, cmd, null, null);
-            String out = (read(p.getInputStream()) + read(p.getErrorStream())).trim();
+            p = (Process) m.invoke(null, cmd, null, null);
+            String out = read(p.getInputStream());
+            String err = read(p.getErrorStream());
             int code = p.waitFor();
-            return code == 0 ? (out.isEmpty() ? "OK" : out) : "exit " + code + ": " + out;
+            String text = (out + err).trim();
+            if (code == 0) return text.isEmpty() ? "OK" : text;
+            return "exit " + code + (text.isEmpty() ? "" : ": " + text);
         } catch (Throwable t) {
-            return "error: " + t;
+            String msg = t.getCause() != null ? String.valueOf(t.getCause()) : String.valueOf(t);
+            return "error: " + msg;
+        } finally {
+            if (p != null) p.destroy();
         }
     }
 
@@ -186,46 +262,167 @@ public class MainActivity extends Activity {
         return sb.toString();
     }
 
-    private static String setBlocked(String pkg, boolean blocked) {
-        String chain = run("cmd", "connectivity", "set-chain3-enabled", "true");
-        String rule = run("cmd", "connectivity", "set-package-networking-enabled",
-                blocked ? "false" : "true", pkg);
-        return chain.equals("OK") ? rule : chain + " | " + rule;
+    private static String enableChain() {
+        return run("cmd", "connectivity", "set-chain3-enabled", "true");
     }
 
-    private void apply(App a, boolean blocked) {
-        if (!shizukuReady()) {
-            updateStatus();
-            log.setText("Saved, but not applied: Shizuku isn't connected.");
-            return;
-        }
-        worker.execute(() -> {
-            String result = setBlocked(a.pkg, blocked);
-            runOnUiThread(() -> log.setText(
-                    (blocked ? "Blocked " : "Unblocked ") + a.label + " → " + result));
-        });
+    private static String setNetworking(String pkg, boolean enabled) {
+        return run("cmd", "connectivity", "set-package-networking-enabled",
+                enabled ? "true" : "false", pkg);
     }
 
-    private void reapplyAll() {
-        if (!shizukuReady()) { requestShizuku(); return; }
-        List<String> pkgs = new ArrayList<>();
+    /** Reads the real kernel state back. Returns one of S_*. */
+    private static int queryState(String pkg, boolean wantBlocked, String[] rawOut) {
+        String out = run("cmd", "connectivity", "get-package-networking-enabled", pkg);
+        rawOut[0] = out;
+        String low = out.toLowerCase(Locale.ROOT);
+        boolean enabled;
+        if (low.contains("false")) enabled = false;
+        else if (low.contains("true")) enabled = true;
+        else return S_UNKNOWN;
+        boolean blocked = !enabled;
+        return blocked == wantBlocked ? S_ENFORCED : S_NOT_ENFORCED;
+    }
+
+    // ---------- Actions ----------
+
+    private Set<String> blockedFromPrefs() {
+        Set<String> out = new HashSet<>();
         for (Map.Entry<String, ?> e : prefs.getAll().entrySet()) {
             if (e.getKey().startsWith(KEY_BLOCK) && Boolean.TRUE.equals(e.getValue())) {
-                pkgs.add(e.getKey().substring(KEY_BLOCK.length()));
+                out.add(e.getKey().substring(KEY_BLOCK.length()));
             }
         }
-        log.setText("Re-applying " + pkgs.size() + " blocks…");
+        return out;
+    }
+
+    /** Toggling one app: write the rule, then read it straight back. */
+    private void toggle(App a, boolean blocked) {
+        a.wanted = blocked;
+        prefs.edit().putBoolean(KEY_BLOCK + a.pkg, blocked).apply();
+        a.state = S_UNKNOWN;
+        a.detail = null;
+
+        if (!shizukuReady()) {
+            a.detail = "Saved — start Shizuku to apply";
+            adapter.notifyDataSetChanged();
+            updateStatus();
+            toast("Not applied: Shizuku isn't connected");
+            return;
+        }
+
         worker.execute(() -> {
-            String last = "nothing to apply";
-            int ok = 0;
-            for (String pkg : pkgs) {
-                last = setBlocked(pkg, true);
-                if (last.equals("OK")) ok++;
-            }
-            final String msg = "Re-applied " + ok + "/" + pkgs.size()
-                    + (ok == pkgs.size() ? "" : " — last result: " + last);
-            runOnUiThread(() -> log.setText(msg));
+            String chain = enableChain();
+            String write = setNetworking(a.pkg, !blocked);
+            String[] raw = new String[1];
+            int state = queryState(a.pkg, blocked, raw);
+
+            runOnUiThread(() -> {
+                a.state = state;
+                if (state == S_ENFORCED) {
+                    a.detail = blocked ? "Blocked — enforced by the kernel" : null;
+                } else if (state == S_NOT_ENFORCED) {
+                    a.detail = "Command ran but the rule did not stick";
+                } else {
+                    a.detail = "Could not read state: " + raw[0];
+                }
+                adapter.notifyDataSetChanged();
+                refreshSummary();
+
+                if (state == S_ENFORCED) {
+                    toast((blocked ? "Blocked " : "Unblocked ") + a.label);
+                } else {
+                    String why = !"OK".equals(chain) ? chain
+                            : (!"OK".equals(write) ? write : raw[0]);
+                    toast("Failed on " + a.label + " — " + why);
+                }
+            });
         });
+    }
+
+    /** Re-writes every saved block. Needed after a reboot. */
+    private void reapplyAll(boolean silent) {
+        Set<String> pkgs = blockedFromPrefs();
+        if (pkgs.isEmpty()) { if (!silent) toast("No blocks saved yet"); return; }
+        if (!shizukuReady()) {
+            if (!silent) { requestShizuku(); toast("Start Shizuku first"); }
+            return;
+        }
+        if (!silent) toast("Re-applying " + pkgs.size() + " block(s)…");
+
+        worker.execute(() -> {
+            String chain = enableChain();
+            int ok = 0;
+            String lastErr = null;
+            for (String pkg : pkgs) {
+                setNetworking(pkg, false);
+                String[] raw = new String[1];
+                int st = queryState(pkg, true, raw);
+                if (st == S_ENFORCED) ok++; else lastErr = raw[0];
+                App a = find(pkg);
+                if (a != null) {
+                    a.state = st;
+                    a.detail = st == S_ENFORCED
+                            ? "Blocked — enforced by the kernel"
+                            : "Not enforced: " + raw[0];
+                }
+            }
+            final int good = ok;
+            final String err = lastErr;
+            runOnUiThread(() -> {
+                adapter.notifyDataSetChanged();
+                refreshSummary();
+                if (good == pkgs.size()) {
+                    toast("All " + good + " block(s) active");
+                } else {
+                    toast(good + "/" + pkgs.size() + " active — "
+                            + (!"OK".equals(chain) ? chain : String.valueOf(err)));
+                }
+            });
+        });
+    }
+
+    /** Reads kernel state for every saved block without changing anything. */
+    private void verifyAll() {
+        Set<String> pkgs = blockedFromPrefs();
+        if (pkgs.isEmpty()) { toast("No blocks saved yet"); return; }
+        if (!shizukuReady()) { requestShizuku(); toast("Start Shizuku to verify"); return; }
+        toast("Checking " + pkgs.size() + " block(s)…");
+
+        worker.execute(() -> {
+            int enforced = 0;
+            for (String pkg : pkgs) {
+                String[] raw = new String[1];
+                int st = queryState(pkg, true, raw);
+                if (st == S_ENFORCED) enforced++;
+                App a = find(pkg);
+                if (a != null) {
+                    a.state = st;
+                    a.detail = st == S_ENFORCED
+                            ? "Blocked — enforced by the kernel"
+                            : st == S_NOT_ENFORCED
+                                ? "NOT enforced — tap Re-apply blocks"
+                                : "Unreadable: " + raw[0];
+                }
+            }
+            final int good = enforced;
+            runOnUiThread(() -> {
+                adapter.notifyDataSetChanged();
+                refreshSummary();
+                toast(good == pkgs.size()
+                        ? "Verified: all " + good + " block(s) live in the kernel"
+                        : good + "/" + pkgs.size() + " still enforced");
+            });
+        });
+    }
+
+    private App find(String pkg) {
+        for (App a : all) if (a.pkg.equals(pkg)) return a;
+        return null;
+    }
+
+    private void toast(String msg) {
+        Snackbar.make(root, msg, Snackbar.LENGTH_LONG).show();
     }
 
     // ---------- App list ----------
@@ -241,6 +438,8 @@ public class MainActivity extends Activity {
             a.info = ai;
             a.pkg = ai.packageName;
             a.label = String.valueOf(ai.loadLabel(pm));
+            a.system = (ai.flags & ApplicationInfo.FLAG_SYSTEM) != 0;
+            a.wanted = prefs.getBoolean(KEY_BLOCK + a.pkg, false);
             found.add(a);
         }
         Collections.sort(found, (x, y) -> x.label.compareToIgnoreCase(y.label));
@@ -248,71 +447,101 @@ public class MainActivity extends Activity {
             all.clear();
             all.addAll(found);
             applyFilter();
+            maybeAutoApply();
         });
     }
 
     private void applyFilter() {
         shown.clear();
         for (App a : all) {
-            if (filter.isEmpty()
-                    || a.label.toLowerCase(Locale.ROOT).contains(filter)
-                    || a.pkg.contains(filter)) {
-                shown.add(a);
-            }
+            if (filter == F_BLOCKED && !a.wanted) continue;
+            if (filter == F_USER && a.system) continue;
+            if (filter == F_SYSTEM && !a.system) continue;
+            if (!query.isEmpty()
+                    && !a.label.toLowerCase(Locale.ROOT).contains(query)
+                    && !a.pkg.toLowerCase(Locale.ROOT).contains(query)) continue;
+            shown.add(a);
         }
         adapter.notifyDataSetChanged();
+        refreshSummary();
     }
 
-    private int dp(int v) {
-        return (int) TypedValue.applyDimension(
-                TypedValue.COMPLEX_UNIT_DIP, v, getResources().getDisplayMetrics());
+    private void refreshSummary() {
+        int blocked = 0, bad = 0;
+        for (App a : all) {
+            if (a.wanted) {
+                blocked++;
+                if (a.state == S_NOT_ENFORCED) bad++;
+            }
+        }
+        String s = shown.size() + " shown · " + blocked + " blocked";
+        if (bad > 0) s += " · " + bad + " NOT enforced";
+        summary.setText(s);
     }
 
-    private class AppAdapter extends BaseAdapter {
-        @Override public int getCount() { return shown.size(); }
-        @Override public Object getItem(int i) { return shown.get(i); }
-        @Override public long getItemId(int i) { return i; }
+    private void loadIcon(App a, Holder h) {
+        if (a.icon != null) { h.icon.setImageDrawable(a.icon); return; }
+        h.icon.setImageDrawable(null);
+        final String want = a.pkg;
+        icons.execute(() -> {
+            Drawable d;
+            try { d = a.info.loadIcon(getPackageManager()); } catch (Throwable t) { return; }
+            a.icon = d;
+            runOnUiThread(() -> { if (want.equals(h.bound)) h.icon.setImageDrawable(d); });
+        });
+    }
+
+    static class Holder extends RecyclerView.ViewHolder {
+        final ImageView icon;
+        final TextView name, pkg, state;
+        final MaterialSwitch block;
+        String bound;
+
+        Holder(View v) {
+            super(v);
+            icon = v.findViewById(R.id.icon);
+            name = v.findViewById(R.id.name);
+            pkg = v.findViewById(R.id.pkg);
+            state = v.findViewById(R.id.state);
+            block = v.findViewById(R.id.block);
+        }
+    }
+
+    private class AppAdapter extends RecyclerView.Adapter<Holder> {
+        @NonNull
+        @Override
+        public Holder onCreateViewHolder(@NonNull ViewGroup parent, int type) {
+            View v = LayoutInflater.from(parent.getContext())
+                    .inflate(R.layout.item_app, parent, false);
+            return new Holder(v);
+        }
 
         @Override
-        public View getView(int pos, View row, ViewGroup parent) {
-            Holder h;
-            if (row == null) {
-                LinearLayout l = new LinearLayout(MainActivity.this);
-                l.setOrientation(LinearLayout.HORIZONTAL);
-                l.setGravity(Gravity.CENTER_VERTICAL);
-                l.setPadding(0, dp(6), 0, dp(6));
-
-                h = new Holder();
-                h.icon = new ImageView(MainActivity.this);
-                l.addView(h.icon, new LinearLayout.LayoutParams(dp(36), dp(36)));
-
-                h.name = new TextView(MainActivity.this);
-                h.name.setPadding(dp(10), 0, dp(6), 0);
-                l.addView(h.name, new LinearLayout.LayoutParams(
-                        0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-
-                h.block = new CheckBox(MainActivity.this);
-                h.block.setText("Block");
-                l.addView(h.block);
-
-                l.setTag(h);
-                row = l;
-            } else {
-                h = (Holder) row.getTag();
-            }
-
+        public void onBindViewHolder(@NonNull Holder h, int pos) {
             App a = shown.get(pos);
-            h.icon.setImageDrawable(a.info.loadIcon(getPackageManager()));
+            h.bound = a.pkg;
             h.name.setText(a.label);
+            h.pkg.setText(a.pkg);
+            loadIcon(a, h);
 
-            String key = KEY_BLOCK + a.pkg;
             h.block.setOnCheckedChangeListener(null);
-            h.block.setChecked(prefs.getBoolean(key, false));
-            h.block.setOnCheckedChangeListener((b, checked) -> {
-                prefs.edit().putBoolean(key, checked).apply();
-                apply(a, checked);
-            });
-            return row;
+            h.block.setChecked(a.wanted);
+            h.block.setOnCheckedChangeListener((b, checked) -> toggle(a, checked));
+            h.itemView.setOnClickListener(v -> h.block.toggle());
+
+            if (a.detail == null) {
+                h.state.setVisibility(View.GONE);
+            } else {
+                h.state.setVisibility(View.VISIBLE);
+                h.state.setText(a.detail);
+                int color = a.state == S_ENFORCED ? R.color.state_ok
+                        : a.state == S_NOT_ENFORCED ? R.color.state_warn
+                        : R.color.state_idle;
+                h.state.setTextColor(getResources().getColor(color, getTheme()));
+            }
         }
+
+        @Override
+        public int getItemCount() { return shown.size(); }
     }
 }

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">NetControl</string>
+    <string name="search_hint">Search apps</string>
+    <string name="menu_verify">Verify blocks</string>
+    <string name="menu_reapply">Re-apply blocks</string>
+    <string name="filter_all">All</string>
+    <string name="filter_blocked">Blocked</string>
+    <string name="filter_user">User</string>
+    <string name="filter_system">System</string>
+    <string name="block">Block</string>
+</resources>
