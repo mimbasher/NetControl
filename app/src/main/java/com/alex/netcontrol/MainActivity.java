@@ -271,16 +271,37 @@ public class MainActivity extends AppCompatActivity {
                 enabled ? "true" : "false", pkg);
     }
 
-    /** Reads the real kernel state back. Returns one of S_*. */
+    /** Returns the token after the last colon, lowercased. "pkg:deny" -> "deny". */
+    private static String verdict(String out) {
+        int c = out.lastIndexOf(':');
+        if (c < 0) return "";
+        return out.substring(c + 1).trim().toLowerCase(Locale.ROOT);
+    }
+
+    /** True when FIREWALL_CHAIN_OEM_DENY_3 is actually being enforced. */
+    private static boolean chainEnabled() {
+        // "chain:enabled" or "chain:disabled". Note that "disabled" contains
+        // "enabled" as a substring, so match on the token, not with contains().
+        return verdict(run("cmd", "connectivity", "get-chain3-enabled")).startsWith("enabled");
+    }
+
+    /**
+     * Reads the real kernel state back. Returns one of S_*.
+     * Output format is "<package>:deny" or "<package>:allow".
+     */
     private static int queryState(String pkg, boolean wantBlocked, String[] rawOut) {
         String out = run("cmd", "connectivity", "get-package-networking-enabled", pkg);
         rawOut[0] = out;
-        String low = out.toLowerCase(Locale.ROOT);
-        boolean enabled;
-        if (low.contains("false")) enabled = false;
-        else if (low.contains("true")) enabled = true;
+        String v = verdict(out);
+        boolean blocked;
+        if (v.startsWith("deny")) blocked = true;
+        else if (v.startsWith("allow")) blocked = false;
         else return S_UNKNOWN;
-        boolean blocked = !enabled;
+        // A deny bit is inert while the chain is off, so that is not enforcement.
+        if (blocked && !chainEnabled()) {
+            rawOut[0] = "deny bit set but chain 3 is disabled";
+            return S_NOT_ENFORCED;
+        }
         return blocked == wantBlocked ? S_ENFORCED : S_NOT_ENFORCED;
     }
 
