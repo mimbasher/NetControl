@@ -2,6 +2,13 @@ plugins {
     id 'com.android.application'
 }
 
+// Release signing. CI decodes the keystore from a secret into release.keystore
+// at the repo root and passes the passwords as environment variables. Local
+// builds without those simply fall back to the debug key.
+def ksPath = System.getenv('KEYSTORE_FILE') ?: 'release.keystore'
+def ksFile = rootProject.file(ksPath)
+def canSign = ksFile.exists() && System.getenv('KEYSTORE_PASSWORD') != null
+
 android {
     namespace 'com.alex.netcontrol'
     compileSdk 34
@@ -10,17 +17,37 @@ android {
         applicationId 'com.alex.netcontrol'
         minSdk 26
         targetSdk 34
-        versionCode 3
-        versionName '3.0'
+        // Monotonic in CI so every release can update the one before it.
+        versionCode = Integer.parseInt(System.getenv('VERSION_CODE') ?: '4')
+        versionName = System.getenv('VERSION_NAME') ?: '2.1'
+    }
+
+    signingConfigs {
+        if (canSign) {
+            release {
+                storeFile ksFile
+                storePassword System.getenv('KEYSTORE_PASSWORD')
+                keyAlias System.getenv('KEY_ALIAS') ?: 'netcontrol'
+                keyPassword System.getenv('KEY_PASSWORD') ?: System.getenv('KEYSTORE_PASSWORD')
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            // Kept off on purpose: MainActivity reaches Shizuku.newProcess by
+            // reflection, which R8 would rename and break.
+            minifyEnabled false
+            shrinkResources false
+            if (canSign) {
+                signingConfig signingConfigs.release
+            }
+        }
     }
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
-    }
-
-    buildFeatures {
-        viewBinding false
     }
 
     lint {

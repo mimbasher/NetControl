@@ -6,6 +6,7 @@ on:
     paths-ignore:
       - '**.md'
       - 'LICENSE'
+      - 'docs/**'
   workflow_dispatch:
 
 permissions:
@@ -16,20 +17,49 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.7'
-      - name: Build
+
+      - name: Decode release keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
-          gradle assembleDebug
-          mv app/build/outputs/apk/debug/app-debug.apk NetControl.apk
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::KEYSTORE_BASE64 secret is missing. Releases must be signed with the stable key."
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > release.keystore
+          echo "keystore bytes: $(stat -c%s release.keystore)"
+
+      - name: Build signed release
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          VERSION_CODE: ${{ github.run_number }}
+          VERSION_NAME: 2.${{ github.run_number }}
+        run: gradle assembleRelease
+
+      - name: Confirm it is signed with the stable key
+        run: |
+          APKSIGNER=$(ls $ANDROID_HOME/build-tools/*/apksigner | tail -1)
+          "$APKSIGNER" verify --print-certs app/build/outputs/apk/release/app-release.apk
+          mv app/build/outputs/apk/release/app-release.apk NetControl.apk
+
+      - name: Remove keystore from the runner
+        if: always()
+        run: rm -f release.keystore
+
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.${{ github.run_number }}
-          name: NetControl v1.${{ github.run_number }}
+          tag_name: v2.${{ github.run_number }}
+          name: NetControl v2.${{ github.run_number }}
           files: NetControl.apk

@@ -109,8 +109,22 @@ CI builds a debug APK on every push and attaches it to a
 ./gradlew assembleDebug
 ```
 
-> Installing over an older NetControl fails with a signature mismatch, because
-> the CI debug key differs from earlier builds. Uninstall first.
+Releases are signed with a stable key held in GitHub secrets, so each one
+installs over the last without losing your blocks.
+
+> **One last uninstall.** Builds up to v1.6 were signed with a throwaway debug
+> key that changed on every CI run, so none of them can be updated in place.
+> Uninstall NetControl once before installing v2.x. After that, updates install
+> over the top and your saved blocks survive.
+
+## Updates
+
+There is no updater inside the app, on purpose: NetControl holds **no INTERNET
+permission at all**, which is worth keeping in a tool whose job is blocking
+network access. It cannot phone home because it cannot reach a network.
+
+To get updates automatically, point [Obtainium](https://github.com/ImranR98/Obtainium)
+at this repository. It watches Releases and installs new versions for you.
 
 ## Limitations
 
