@@ -9,4 +9,8 @@
         android:id="@+id/action_reapply"
         android:title="@string/menu_reapply"
         app:showAsAction="never" />
+    <item
+        android:id="@+id/action_updates"
+        android:title="@string/menu_updates"
+        app:showAsAction="never" />
 </menu>

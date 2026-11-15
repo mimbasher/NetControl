@@ -1,0 +1,29 @@
+NetControl cuts any app off both WiFi and mobile data on an unrooted phone.
+
+Android has no built in way to do this. Samsung's "Allowed networks for apps"
+lets you disable WiFi or mobile data for an app, never both. Every other no root
+firewall works by declaring itself a VPN, which occupies your one and only VPN
+slot and costs battery. NetControl does neither.
+
+It uses Shizuku to borrow shell (ADB) privileges just long enough to run
+Android's own firewall commands, setting the app's deny bit in
+FIREWALL_CHAIN_OEM_DENY_3, a kernel BPF firewall map owned by netd. The block is
+enforced below the app layer, so it covers WiFi and cellular identically and
+costs no battery.
+
+The rule lives in the kernel, not in NetControl and not in Shizuku. You only
+need Shizuku at the moment you change a block. Apply your blocks, then stop
+Shizuku. The blocks stay active with nothing running in the background.
+
+Every write is read straight back from the kernel, so a rule that did not stick
+says so rather than showing a green switch and lying to you. The header counts
+anything that is not enforced, so a silent failure cannot hide.
+
+A reboot clears the map. NetControl re-applies your saved blocks automatically
+the next time you open it with Shizuku available.
+
+Requires Android 15 or newer. The commands this relies on do not exist on
+Android 14 and older.
+
+This F-Droid build declares no INTERNET permission at all. It cannot phone home
+because it cannot reach a network.

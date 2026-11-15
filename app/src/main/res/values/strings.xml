@@ -9,4 +9,20 @@
     <string name="filter_user">User</string>
     <string name="filter_system">System</string>
     <string name="block">Block</string>
+    <string name="menu_updates">Check for updates</string>
+    <string name="update_no_browser">No browser available to open the Releases page</string>
+    <string name="empty_loading">Loading apps</string>
+    <string name="empty_blocked_title">Nothing blocked yet</string>
+    <string name="empty_blocked_body">Flip the switch next to an app to cut it off from WiFi and mobile data.</string>
+    <string name="empty_nomatch_title">No apps match \u201c%1$s\u201d</string>
+    <string name="empty_nomatch_body">Only apps that can use the network are listed here.</string>
+    <string name="empty_filtered_title">No matches in this filter</string>
+    <plurals name="empty_filtered_body">
+        <item quantity="one">\u201c%2$s\u201d matches %1$d app under another filter.</item>
+        <item quantity="other">\u201c%2$s\u201d matches %1$d apps under another filter.</item>
+    </plurals>
+    <string name="empty_filter_title">Nothing here</string>
+    <string name="empty_filter_body">No apps in this filter can use the network.</string>
+    <string name="empty_show_all">Show all apps</string>
+    <string name="empty_clear_search">Clear search</string>
 </resources>

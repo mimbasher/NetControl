@@ -23,6 +23,7 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.button.MaterialButton;
+import com.google.android.material.chip.Chip;
 import com.google.android.material.chip.ChipGroup;
 import com.google.android.material.color.DynamicColors;
 import com.google.android.material.materialswitch.MaterialSwitch;
@@ -96,6 +97,15 @@ public class MainActivity extends AppCompatActivity {
 
     private String query = "";
     private int filter = F_ALL;
+    /** True until loadApps has reported back, so the blank list can say so. */
+    private boolean loading = true;
+
+    private TextInputEditText searchField;
+    private Chip chipAll;
+    private View empty;
+    private View emptySpinner;
+    private TextView emptyTitle, emptyBody;
+    private MaterialButton emptyAction;
 
     static class App {
         ApplicationInfo info;
@@ -129,6 +139,11 @@ public class MainActivity extends AppCompatActivity {
         statusAction = findViewById(R.id.statusAction);
         summary = findViewById(R.id.summary);
         list = findViewById(R.id.list);
+        empty = findViewById(R.id.empty);
+        emptySpinner = findViewById(R.id.emptySpinner);
+        emptyTitle = findViewById(R.id.emptyTitle);
+        emptyBody = findViewById(R.id.emptyBody);
+        emptyAction = findViewById(R.id.emptyAction);
 
         MaterialToolbar toolbar = findViewById(R.id.toolbar);
         toolbar.inflateMenu(R.menu.main);
@@ -139,8 +154,9 @@ public class MainActivity extends AppCompatActivity {
         list.setAdapter(adapter);
         list.setHasFixedSize(false);
 
-        TextInputEditText search = findViewById(R.id.search);
-        search.addTextChangedListener(new TextWatcher() {
+        searchField = findViewById(R.id.search);
+        chipAll = findViewById(R.id.chipAll);
+        searchField.addTextChangedListener(new TextWatcher() {
             public void beforeTextChanged(CharSequence s, int a, int b, int c) { }
             public void onTextChanged(CharSequence s, int a, int b, int c) { }
             public void afterTextChanged(Editable s) {
@@ -184,6 +200,9 @@ public class MainActivity extends AppCompatActivity {
         int id = item.getItemId();
         if (id == R.id.action_verify) { verifyAll(); return true; }
         if (id == R.id.action_reapply) { reapplyAll(false); return true; }
+        // Updater is supplied per flavour: the full build checks GitHub, the
+        // foss build just opens the Releases page in a browser.
+        if (id == R.id.action_updates) { Updater.check(this); return true; }
         return false;
     }
 
@@ -483,6 +502,7 @@ public class MainActivity extends AppCompatActivity {
         }
         Collections.sort(found, (x, y) -> x.label.compareToIgnoreCase(y.label));
         runOnUiThread(() -> {
+            loading = false;
             all.clear();
             all.addAll(found);
             applyFilter();
@@ -496,13 +516,75 @@ public class MainActivity extends AppCompatActivity {
             if (filter == F_BLOCKED && !a.wanted) continue;
             if (filter == F_USER && a.system) continue;
             if (filter == F_SYSTEM && !a.system) continue;
-            if (!query.isEmpty()
-                    && !a.label.toLowerCase(Locale.ROOT).contains(query)
-                    && !a.pkg.toLowerCase(Locale.ROOT).contains(query)) continue;
+            if (!matchesQuery(a)) continue;
             shown.add(a);
         }
         adapter.notifyDataSetChanged();
         refreshSummary();
+        updateEmpty();
+    }
+
+    private boolean matchesQuery(App a) {
+        if (query.isEmpty()) return true;
+        return a.label.toLowerCase(Locale.ROOT).contains(query)
+                || a.pkg.toLowerCase(Locale.ROOT).contains(query);
+    }
+
+    /**
+     * A blank list is the one screen that cannot explain itself, so say why it
+     * is blank and, where there is one, offer the way out. The most common case
+     * by far is searching for something real while a filter is hiding it, for
+     * example looking for Chrome with User selected when Chrome is a system app.
+     */
+    private void updateEmpty() {
+        if (!shown.isEmpty()) {
+            empty.setVisibility(View.GONE);
+            list.setVisibility(View.VISIBLE);
+            return;
+        }
+        empty.setVisibility(View.VISIBLE);
+        list.setVisibility(View.GONE);
+        emptySpinner.setVisibility(loading ? View.VISIBLE : View.GONE);
+        emptyBody.setVisibility(View.GONE);
+        emptyAction.setVisibility(View.GONE);
+
+        if (loading) {
+            emptyTitle.setText(R.string.empty_loading);
+            return;
+        }
+
+        // How many apps the search would find if no filter were applied.
+        int elsewhere = 0;
+        for (App a : all) if (matchesQuery(a)) elsewhere++;
+
+        if (!query.isEmpty() && elsewhere > 0) {
+            emptyTitle.setText(R.string.empty_filtered_title);
+            emptyBody.setText(getResources().getQuantityString(
+                    R.plurals.empty_filtered_body, elsewhere, elsewhere, query));
+            emptyBody.setVisibility(View.VISIBLE);
+            emptyAction.setText(R.string.empty_show_all);
+            emptyAction.setVisibility(View.VISIBLE);
+            emptyAction.setOnClickListener(v -> chipAll.setChecked(true));
+            return;
+        }
+        if (!query.isEmpty()) {
+            emptyTitle.setText(getString(R.string.empty_nomatch_title, query));
+            emptyBody.setText(R.string.empty_nomatch_body);
+            emptyBody.setVisibility(View.VISIBLE);
+            emptyAction.setText(R.string.empty_clear_search);
+            emptyAction.setVisibility(View.VISIBLE);
+            emptyAction.setOnClickListener(v -> searchField.setText(""));
+            return;
+        }
+        if (filter == F_BLOCKED) {
+            emptyTitle.setText(R.string.empty_blocked_title);
+            emptyBody.setText(R.string.empty_blocked_body);
+            emptyBody.setVisibility(View.VISIBLE);
+            return;
+        }
+        emptyTitle.setText(R.string.empty_filter_title);
+        emptyBody.setText(R.string.empty_filter_body);
+        emptyBody.setVisibility(View.VISIBLE);
     }
 
     private void refreshSummary() {
