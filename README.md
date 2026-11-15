@@ -36,11 +36,11 @@
   <img src="docs/landscape.png" width="540" alt="Landscape and tablet layout, with the controls beside the list">
 </p>
 
-Android has no built in way to do this. Samsung's *Allowed networks for apps*
-lets you disable WiFi **or** mobile data for an app, never both. Every other no
-root firewall (NetGuard, Blokada, TrackerControl, RethinkDNS) works by declaring
-itself a VPN, which occupies your one and only VPN slot and costs battery.
-NetControl does neither.
+Android has no built in way to do this. Where a manufacturer ships a per app
+network setting at all, it lets you turn off WiFi **or** mobile data for an app,
+never both. Every other no root firewall (NetGuard, Blokada, TrackerControl,
+RethinkDNS) works by declaring itself a VPN, which occupies your one and only
+VPN slot and costs battery. NetControl does neither.
 
 ## ⚙️ How it works
 

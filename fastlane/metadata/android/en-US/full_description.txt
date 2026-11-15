@@ -1,9 +1,9 @@
 NetControl cuts any app off both WiFi and mobile data on an unrooted phone.
 
-Android has no built in way to do this. Samsung's "Allowed networks for apps"
-lets you disable WiFi or mobile data for an app, never both. Every other no root
-firewall works by declaring itself a VPN, which occupies your one and only VPN
-slot and costs battery. NetControl does neither.
+Android has no built in way to do this. Where a manufacturer ships a per app
+network setting at all, it lets you turn off WiFi or mobile data for an app,
+never both. Every other no root firewall works by declaring itself a VPN, which
+occupies your one and only VPN slot and costs battery. NetControl does neither.
 
 It uses Shizuku to borrow shell (ADB) privileges just long enough to run
 Android's own firewall commands, setting the app's deny bit in
