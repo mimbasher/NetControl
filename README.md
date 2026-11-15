@@ -32,6 +32,10 @@
   <img src="docs/persists.png" width="265" alt="Blocks still active with Shizuku stopped">
 </p>
 
+<p align="center">
+  <img src="docs/landscape.png" width="540" alt="Landscape and tablet layout, with the controls beside the list">
+</p>
+
 Android has no built in way to do this. Samsung's *Allowed networks for apps*
 lets you disable WiFi **or** mobile data for an app, never both. Every other no
 root firewall (NetGuard, Blokada, TrackerControl, RethinkDNS) works by declaring
