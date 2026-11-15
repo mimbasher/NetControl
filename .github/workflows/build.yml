@@ -45,13 +45,49 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           VERSION_CODE: ${{ github.run_number }}
           VERSION_NAME: 2.${{ github.run_number }}
-        run: gradle assembleRelease
+        run: gradle assembleFullRelease assembleFossRelease
 
-      - name: Confirm it is signed with the stable key
+      - name: Confirm both are signed with the stable key
         run: |
           APKSIGNER=$(ls $ANDROID_HOME/build-tools/*/apksigner | tail -1)
-          "$APKSIGNER" verify --print-certs app/build/outputs/apk/release/app-release.apk
-          mv app/build/outputs/apk/release/app-release.apk NetControl.apk
+          "$APKSIGNER" verify --print-certs app/build/outputs/apk/full/release/app-full-release.apk
+          "$APKSIGNER" verify --print-certs app/build/outputs/apk/foss/release/app-foss-release.apk
+          # NetControl.apk keeps its name: the README download button and every
+          # existing Obtainium config point at that exact asset.
+          mv app/build/outputs/apk/full/release/app-full-release.apk NetControl.apk
+          mv app/build/outputs/apk/foss/release/app-foss-release.apk NetControl-foss.apk
+
+      - name: Confirm the foss build really has no network permission
+        run: |
+          set -euo pipefail
+          AAPT=$(ls $ANDROID_HOME/build-tools/*/aapt2 | tail -1)
+          perms() {
+            if ! out=$("$AAPT" dump permissions "$1" 2>&1); then
+              echo "::error::could not read $1 - $out"
+              exit 1
+            fi
+            # A manifest we read correctly always has this one. Without the
+            # check, an unreadable file would come back empty and look exactly
+            # like "no INTERNET permission", passing the test for the wrong
+            # reason.
+            if ! grep -q 'QUERY_ALL_PACKAGES' <<<"$out"; then
+              echo "::error::$1 gave no recognisable permission list, refusing to judge it"
+              exit 1
+            fi
+            printf '%s' "$out"
+          }
+
+          if grep -q 'android.permission.INTERNET' <<<"$(perms NetControl-foss.apk)"; then
+            echo "::error::foss build declares INTERNET. That flavour must never reach a network."
+            exit 1
+          fi
+          echo "foss build declares no INTERNET permission, as intended."
+
+          if ! grep -q 'android.permission.INTERNET' <<<"$(perms NetControl.apk)"; then
+            echo "::error::full build is missing INTERNET, so its updater cannot work."
+            exit 1
+          fi
+          echo "full build declares INTERNET, as intended."
 
       - name: Remove keystore from the runner
         if: always()
@@ -62,4 +98,6 @@ jobs:
         with:
           tag_name: v2.${{ github.run_number }}
           name: NetControl v2.${{ github.run_number }}
-          files: NetControl.apk
+          files: |
+            NetControl.apk
+            NetControl-foss.apk

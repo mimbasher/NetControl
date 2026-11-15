@@ -9,4 +9,6 @@
     <string name="filter_user">User</string>
     <string name="filter_system">System</string>
     <string name="block">Block</string>
+    <string name="menu_updates">Check for updates</string>
+    <string name="update_no_browser">No browser available to open the Releases page</string>
 </resources>

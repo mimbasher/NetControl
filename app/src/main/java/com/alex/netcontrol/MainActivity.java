@@ -184,6 +184,9 @@ public class MainActivity extends AppCompatActivity {
         int id = item.getItemId();
         if (id == R.id.action_verify) { verifyAll(); return true; }
         if (id == R.id.action_reapply) { reapplyAll(false); return true; }
+        // Updater is supplied per flavour: the full build checks GitHub, the
+        // foss build just opens the Releases page in a browser.
+        if (id == R.id.action_updates) { Updater.check(this); return true; }
         return false;
     }
 
