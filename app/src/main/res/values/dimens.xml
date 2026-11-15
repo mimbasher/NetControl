@@ -6,4 +6,8 @@
     <dimen name="card_padding">16dp</dimen>
     <dimen name="header_gap">10dp</dimen>
     <dimen name="row_padding_v">10dp</dimen>
+    <!-- Landscape uses its own two pane layout, which spends the width on the
+         list instead of on gutters, so it needs far less edge padding than the
+         portrait screen_gutter above. -->
+    <dimen name="screen_gutter_land">0dp</dimen>
 </resources>
