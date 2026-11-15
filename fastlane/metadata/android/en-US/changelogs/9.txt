@@ -1,0 +1,11 @@
+Landscape now puts the controls in a column beside the list instead of stacked
+above it. A phone in landscape showed barely one row before; it now shows about
+four, and tablets and unfolded foldables gained rows too.
+
+The keyboard no longer opens by itself when the app starts.
+
+Releases now ship two builds. NetControl-foss.apk declares no INTERNET
+permission at all, so you can confirm from Android's App info screen that it
+cannot reach a network. NetControl.apk adds an optional updater that checks
+GitHub only when you tap Menu, Check for updates. Neither build does anything
+in the background, and your blocks are untouched either way.
