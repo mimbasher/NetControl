@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Shown in place of the list when there is nothing to show. Included by both
+     the portrait and landscape layouts so the two cannot drift apart. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/empty"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:paddingHorizontal="32dp"
+    android:paddingBottom="32dp"
+    android:visibility="gone">
+
+    <com.google.android.material.progressindicator.CircularProgressIndicator
+        android:id="@+id/emptySpinner"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="16dp"
+        android:indeterminate="true"
+        app:indicatorSize="36dp"
+        app:trackThickness="3dp"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/emptyTitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:textAppearance="@style/TextAppearance.Material3.TitleMedium" />
+
+    <TextView
+        android:id="@+id/emptyBody"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:gravity="center"
+        android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
+        android:textColor="?attr/colorOnSurfaceVariant"
+        android:visibility="gone" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/emptyAction"
+        style="@style/Widget.Material3.Button.TonalButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="20dp"
+        android:visibility="gone" />
+</LinearLayout>
