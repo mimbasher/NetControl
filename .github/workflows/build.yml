@@ -7,6 +7,10 @@ on:
       - '**.md'
       - 'LICENSE'
       - 'docs/**'
+      # Listing text and screenshots for F-Droid. Read straight from the repo
+      # by the repository builder, never compiled into the APK, so changing
+      # them must not cut a release whose code is byte for byte the last one.
+      - 'fastlane/**'
   workflow_dispatch:
 
 permissions:
