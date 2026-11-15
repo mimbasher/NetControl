@@ -304,8 +304,8 @@ not be merged.
 
 ## License
 
-The repository does not carry a license file yet. Until one is added, open an
-issue if you need the terms clarified before contributing.
+By contributing, you agree that your contributions are licensed under the
+[MIT License](LICENSE).
 
 ## Thanks
 

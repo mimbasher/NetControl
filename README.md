@@ -14,6 +14,7 @@
   <a href="../../releases/latest"><img src="https://img.shields.io/github/v/release/mimbasher/NetControl?label=release" alt="Latest release"></a>
   <a href="../../releases"><img src="https://img.shields.io/github/downloads/mimbasher/NetControl/total?label=downloads&color=blue" alt="Total downloads"></a>
   <img src="https://img.shields.io/badge/Android-15%2B-3DDC84?logo=android&logoColor=white" alt="Android 15+">
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/mimbasher/NetControl?label=license" alt="MIT licensed"></a>
 </p>
 
 <p align="center">
@@ -185,6 +186,11 @@ the background, no network access.
   technically a service, so it needs thought before it earns a place.
 
 Interested in one of these? Say so in an [issue](../../issues) before you start.
+
+## 📄 License
+
+[MIT](LICENSE). Do what you like with it, keep the copyright notice, and expect
+no warranty.
 
 ## 🤝 Contributing
 
