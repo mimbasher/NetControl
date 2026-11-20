@@ -52,39 +52,36 @@ One Activity, two layouts, no architecture framework. That is on purpose.
 
 ```
 app/
-├── build.gradle                        # AGP config, flavours, signing, deps
+├── build.gradle                        # AGP config, signing, deps
 └── src/
-    ├── main/                           # everything both flavours share
-    │   ├── AndroidManifest.xml
-    │   ├── java/com/alex/netcontrol/
-    │   │   └── MainActivity.java       # UI, Shizuku calls, state
-    │   └── res/
-    │       ├── layout/
-    │       │   ├── activity_main.xml   # portrait: everything stacked
-    │       │   └── item_app.xml        # one app row
-    │       ├── layout-land/
-    │       │   └── activity_main.xml   # landscape: controls beside the list
-    │       ├── values/                 # colors, dimens, strings, themes
-    │       ├── values-night/           # dark theme
-    │       ├── values-land/            # tighter header in landscape
-    │       ├── values-w600dp/          # gutters: unfolded foldable
-    │       ├── values-w720dp/          # gutters: tablet portrait
-    │       ├── values-w840dp/          # gutters: tablet landscape
-    │       └── drawable/ · mipmap-anydpi-v26/ · menu/
-    ├── foss/                           # F-Droid build. No network, ever.
-    │   └── java/.../Updater.java       # opens the Releases page in a browser
-    └── full/                           # the only code that touches a network
-        ├── AndroidManifest.xml         # INTERNET + REQUEST_INSTALL_PACKAGES
-        ├── java/.../Updater.java       # checks GitHub, downloads, installs
-        └── res/xml/update_paths.xml    # FileProvider path for the download
-.github/workflows/build.yml             # builds and publishes both flavours
-fastlane/metadata/android/en-US/        # F-Droid and IzzyOnDroid listing
+    └── main/
+        ├── AndroidManifest.xml
+        ├── java/com/alex/netcontrol/
+        │   ├── MainActivity.java       # UI, Shizuku calls, state
+        │   ├── Blocks.java             # saved blocks, reboot detection
+        │   ├── BlockTileService.java   # Quick Settings tile
+        │   └── Updater.java            # the only code that touches a network
+        └── res/
+            ├── layout/
+            │   ├── activity_main.xml   # portrait: everything stacked
+            │   └── item_app.xml        # one app row
+            ├── layout-land/
+            │   └── activity_main.xml   # landscape: controls beside the list
+            ├── values/                 # colors, dimens, strings, themes
+            ├── values-night/           # dark theme
+            ├── values-land/            # tighter header in landscape
+            ├── values-w600dp/          # gutters: unfolded foldable
+            ├── values-w720dp/          # gutters: tablet portrait
+            ├── values-w840dp/          # gutters: tablet landscape
+            └── drawable/ · mipmap-anydpi-v26/ · menu/ · xml/
+.github/workflows/build.yml             # builds and publishes the APK
 docs/                                   # screenshots used by the README
 ```
 
 `MainActivity.java` is deliberately one file. If you are tempted to split it
 into a repository, a view model and three interfaces, please open an issue
-first and make the case.
+first and make the case. `Blocks.java` is small and separate only because the
+tile cannot reach into the Activity.
 
 ## Build and run
 
@@ -209,12 +206,9 @@ otherwise win over `values-land`.
   whole budget.
 - **Keep `minifyEnabled` off.** `MainActivity` reaches `Shizuku.newProcess` by
   reflection and R8 renames it.
-- **The `foss` flavour never gets `INTERNET`.** A tool whose job is blocking
-  network access must have a build you can prove cannot reach a network. CI
-  fails if that flavour ever declares it. The `full` flavour carries `INTERNET`
-  solely for the updater, which runs only on an explicit tap. Anything that
-  would make the app talk to a network on its own, on launch or in the
-  background, will be closed.
+- **`INTERNET` is for the updater and nothing else.** It runs only on an
+  explicit tap. Anything that would make the app talk to a network on its own,
+  on launch or in the background, will be closed.
 - **Strings go in `strings.xml`**, not inline in code or layouts.
 - **No em dashes** in code, comments, docs or user facing strings. Recast the
   sentence.
@@ -282,9 +276,13 @@ not be merged.
    does not, and will not.
 2. **Nothing in the background.** No foreground service, no job scheduler, no
    boot receiver. Blocks live in the kernel and need no process to hold them.
-3. **No network access without a tap.** The foss build has none at all. The
-   full build may only talk to `api.github.com`, only when the user taps Check
-   for updates, and never on launch or in the background.
+   The Quick Settings tile is the one service in the app, and only because the
+   system binds it while the shade is open and unbinds it after. It reads
+   SharedPreferences and the clock. A tile that kept something alive, or that
+   needed Shizuku, would not have earned its place.
+3. **No network access without a tap.** The app may only talk to
+   `api.github.com`, only when the user taps Check for updates, and never on
+   launch or in the background.
 4. **Tell the truth about state.** Every write is read straight back and the
    real kernel state is shown, including failures. Never report success you have
    not verified. The header counts anything not enforced so a silent failure
@@ -299,8 +297,8 @@ not be merged.
 - If your change alters user visible behaviour, update the README in the same
   PR.
 - New screenshots go in `docs/` at a width that matches the existing three.
-- Update the [Verified behaviour](README.md#verified-behaviour) table when you
-  confirm or contradict a row on real hardware.
+- Say in the PR what you tested on. Device reports that confirm or contradict
+  the documented behaviour are welcome as issues.
 
 ## License
 
