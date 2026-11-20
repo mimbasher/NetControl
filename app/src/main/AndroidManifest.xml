@@ -26,6 +26,18 @@
             </intent-filter>
         </activity>
 
+        <!-- Bound only while the shade is open. See BlockTileService. -->
+        <service
+            android:name=".BlockTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_tile_shield"
+            android:label="@string/tile_name"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.updates"

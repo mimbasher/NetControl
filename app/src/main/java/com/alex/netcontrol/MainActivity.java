@@ -37,7 +37,6 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -65,8 +64,6 @@ import rikka.shizuku.Shizuku;
  */
 public class MainActivity extends AppCompatActivity {
 
-    private static final String PREFS = "netcontrol";
-    private static final String KEY_BLOCK = "block:";
     private static final int REQ_SHIZUKU = 7;
 
     // Filters
@@ -131,7 +128,7 @@ public class MainActivity extends AppCompatActivity {
         DynamicColors.applyToActivityIfAvailable(this);
         setContentView(R.layout.activity_main);
 
-        prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        prefs = Blocks.prefs(this);
         root = findViewById(R.id.coordinator);
         statusTitle = findViewById(R.id.statusTitle);
         statusBody = findViewById(R.id.statusBody);
@@ -333,25 +330,34 @@ public class MainActivity extends AppCompatActivity {
     // ---------- Actions ----------
 
     private Set<String> blockedFromPrefs() {
-        Set<String> out = new HashSet<>();
-        for (Map.Entry<String, ?> e : prefs.getAll().entrySet()) {
-            if (e.getKey().startsWith(KEY_BLOCK) && Boolean.TRUE.equals(e.getValue())) {
-                out.add(e.getKey().substring(KEY_BLOCK.length()));
-            }
+        return Blocks.blocked(prefs);
+    }
+
+    /**
+     * Tells the Quick Settings tile what this kernel read found, so a reboot
+     * that wipes the map is visible from the shade without opening the app.
+     * Only ever called where a command has actually run and been read back.
+     */
+    private void recordCheck() {
+        boolean allEnforced = true;
+        for (App a : all) {
+            if (a.wanted && a.state != S_ENFORCED) { allEnforced = false; break; }
         }
-        return out;
+        Blocks.recordCheck(prefs, allEnforced);
+        Blocks.refreshTile(this);
     }
 
     /** Toggling one app: write the rule, then read it straight back. */
     private void toggle(App a, boolean blocked) {
         a.wanted = blocked;
-        prefs.edit().putBoolean(KEY_BLOCK + a.pkg, blocked).apply();
+        prefs.edit().putBoolean(Blocks.KEY_BLOCK + a.pkg, blocked).apply();
         setState(a, S_UNKNOWN, null);
 
         if (!shizukuReady()) {
             setState(a, S_UNKNOWN, "Saved. Start Shizuku to apply");
             adapter.notifyDataSetChanged();
             updateStatus();
+            Blocks.refreshTile(this);
             toast("Not applied: Shizuku isn't connected");
             return;
         }
@@ -374,6 +380,7 @@ public class MainActivity extends AppCompatActivity {
                 setState(a, state, detail);
                 adapter.notifyDataSetChanged();
                 refreshSummary();
+                recordCheck();
 
                 if (state == S_ENFORCED) {
                     toast((blocked ? "Blocked " : "Unblocked ") + a.label);
@@ -417,6 +424,7 @@ public class MainActivity extends AppCompatActivity {
             runOnUiThread(() -> {
                 adapter.notifyDataSetChanged();
                 refreshSummary();
+                recordCheck();
                 if (good == pkgs.size()) {
                     toast("All " + good + " block(s) active");
                 } else {
@@ -453,6 +461,7 @@ public class MainActivity extends AppCompatActivity {
             runOnUiThread(() -> {
                 adapter.notifyDataSetChanged();
                 refreshSummary();
+                recordCheck();
                 toast(good == pkgs.size()
                         ? "Verified: all " + good + " block(s) live in the kernel"
                         : good + "/" + pkgs.size() + " still enforced");
@@ -492,7 +501,7 @@ public class MainActivity extends AppCompatActivity {
             a.pkg = ai.packageName;
             a.label = String.valueOf(ai.loadLabel(pm));
             a.system = (ai.flags & ApplicationInfo.FLAG_SYSTEM) != 0;
-            a.wanted = prefs.getBoolean(KEY_BLOCK + a.pkg, false);
+            a.wanted = prefs.getBoolean(Blocks.KEY_BLOCK + a.pkg, false);
             Integer cached = STATE_CACHE.get(a.pkg);
             if (cached != null) {
                 a.state = cached;

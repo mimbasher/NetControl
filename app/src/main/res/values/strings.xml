@@ -25,6 +25,16 @@
     <string name="empty_filter_body">No apps in this filter can use the network.</string>
     <string name="empty_show_all">Show all apps</string>
     <string name="empty_clear_search">Clear search</string>
+    <string name="tile_name">NetControl blocks</string>
+    <!-- A tile subtitle is cut off after about 13 characters. -->
+    <string name="tile_none">No blocks</string>
+    <string name="tile_unapplied">Not applied</string>
+    <string name="tile_rebooted">Reboot cleared</string>
+    <string name="tile_unsure">Not enforced</string>
+    <plurals name="tile_ok">
+        <item quantity="one">%d blocked</item>
+        <item quantity="other">%d blocked</item>
+    </plurals>
     <string name="update_checking">Checking for updates</string>
     <string name="update_downloading">Downloading</string>
     <string name="update_none">No release found</string>
