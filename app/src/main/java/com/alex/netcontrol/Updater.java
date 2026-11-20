@@ -30,10 +30,12 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Full flavour updater, for APKs handed out from GitHub Releases where nothing
- * else is watching for new versions.
+ * The updater. NetControl is handed out from GitHub Releases, where nothing
+ * else is watching for new versions, so it offers to fetch its own.
  *
- * Deliberate limits, so this stays inside the rules the rest of the app follows:
+ * This is the only code in the app that touches a network, and the only reason
+ * the manifest declares INTERNET. Deliberate limits, so it stays inside the
+ * rules the rest of the app follows:
  *
  *  - It only ever runs when the user taps "Check for updates". There is no
  *    background check, no scheduled job and no check on launch. The app still
@@ -41,9 +43,6 @@ import java.util.concurrent.Executors;
  *  - It talks to exactly one host, api.github.com, and sends no identifying
  *    information beyond what any HTTP request unavoidably carries.
  *  - It asks before downloading, and again before installing.
- *
- * The foss flavour replaces this whole class with one that opens a browser, so
- * the F-Droid build keeps a manifest with no INTERNET permission in it.
  */
 final class Updater {
 

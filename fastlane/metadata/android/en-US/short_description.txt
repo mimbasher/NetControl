@@ -1,1 +1,0 @@
-Block any app from WiFi and mobile data. No VPN, no root, no background service.

@@ -22,30 +22,8 @@ android {
         versionName = System.getenv('VERSION_NAME') ?: '2.1'
     }
 
-    // Two flavours, because the updater needs INTERNET and the whole point of
-    // this app is not having it.
-    //   foss  - no network permission at all. For F-Droid and IzzyOnDroid,
-    //           where the repo client already does the updating, so an in-app
-    //           updater would be redundant anyway.
-    //   full  - for APKs handed out from GitHub Releases, where nothing else
-    //           is watching for new versions. Adds INTERNET and the ability to
-    //           install a package, and nothing else.
-    // Each flavour supplies its own Updater with the same signature, so
-    // MainActivity does not know or care which one it is talking to.
-    flavorDimensions += 'distribution'
-
-    productFlavors {
-        foss {
-            dimension 'distribution'
-            buildConfigField 'boolean', 'HAS_UPDATER', 'false'
-        }
-        full {
-            dimension 'distribution'
-            buildConfigField 'boolean', 'HAS_UPDATER', 'true'
-        }
-    }
-
     buildFeatures {
+        // The updater reads BuildConfig.VERSION_NAME.
         buildConfig true
     }
 

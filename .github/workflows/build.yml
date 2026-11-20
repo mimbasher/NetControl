@@ -7,10 +7,6 @@ on:
       - '**.md'
       - 'LICENSE'
       - 'docs/**'
-      # Listing text and screenshots for F-Droid. Read straight from the repo
-      # by the repository builder, never compiled into the APK, so changing
-      # them must not cut a release whose code is byte for byte the last one.
-      - 'fastlane/**'
   workflow_dispatch:
 
 permissions:
@@ -49,19 +45,17 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           VERSION_CODE: ${{ github.run_number }}
           VERSION_NAME: 2.${{ github.run_number }}
-        run: gradle assembleFullRelease assembleFossRelease
+        run: gradle assembleRelease
 
-      - name: Confirm both are signed with the stable key
+      - name: Confirm it is signed with the stable key
         run: |
           APKSIGNER=$(ls $ANDROID_HOME/build-tools/*/apksigner | tail -1)
-          "$APKSIGNER" verify --print-certs app/build/outputs/apk/full/release/app-full-release.apk
-          "$APKSIGNER" verify --print-certs app/build/outputs/apk/foss/release/app-foss-release.apk
+          "$APKSIGNER" verify --print-certs app/build/outputs/apk/release/app-release.apk
           # NetControl.apk keeps its name: the README download button and every
           # existing Obtainium config point at that exact asset.
-          mv app/build/outputs/apk/full/release/app-full-release.apk NetControl.apk
-          mv app/build/outputs/apk/foss/release/app-foss-release.apk NetControl-foss.apk
+          mv app/build/outputs/apk/release/app-release.apk NetControl.apk
 
-      - name: Confirm the foss build really has no network permission
+      - name: Confirm the updater can actually work
         run: |
           set -euo pipefail
           AAPT=$(ls $ANDROID_HOME/build-tools/*/aapt2 | tail -1)
@@ -81,17 +75,11 @@ jobs:
             printf '%s' "$out"
           }
 
-          if grep -q 'android.permission.INTERNET' <<<"$(perms NetControl-foss.apk)"; then
-            echo "::error::foss build declares INTERNET. That flavour must never reach a network."
-            exit 1
-          fi
-          echo "foss build declares no INTERNET permission, as intended."
-
           if ! grep -q 'android.permission.INTERNET' <<<"$(perms NetControl.apk)"; then
-            echo "::error::full build is missing INTERNET, so its updater cannot work."
+            echo "::error::the build is missing INTERNET, so its updater cannot work."
             exit 1
           fi
-          echo "full build declares INTERNET, as intended."
+          echo "build declares INTERNET, as intended."
 
       - name: Remove keystore from the runner
         if: always()
@@ -102,6 +90,4 @@ jobs:
         with:
           tag_name: v2.${{ github.run_number }}
           name: NetControl v2.${{ github.run_number }}
-          files: |
-            NetControl.apk
-            NetControl-foss.apk
+          files: NetControl.apk
