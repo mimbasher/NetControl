@@ -13,6 +13,7 @@
   <a href="../../actions/workflows/build.yml"><img src="https://github.com/mimbasher/NetControl/actions/workflows/build.yml/badge.svg" alt="Build APK"></a>
   <a href="../../releases/latest"><img src="https://img.shields.io/github/v/release/mimbasher/NetControl?label=release" alt="Latest release"></a>
   <a href="../../releases"><img src="https://img.shields.io/github/downloads/mimbasher/NetControl/total?label=downloads&color=blue" alt="Total downloads"></a>
+  <a href="../../stargazers"><img src="https://img.shields.io/github/stars/mimbasher/NetControl?label=stars&color=yellow" alt="GitHub stars"></a>
 </p>
 
 <p align="center">
@@ -125,3 +126,7 @@ connectivity` behaviour that varies by Android version and OEM skin, and no
 emulator can tell us how your phone behaves. If it works, or if it does not,
 please [file a device report](../../issues/new). Even a one line "works as
 documented on <model>, Android <version>" genuinely helps.
+
+<h3 align="center">
+  If you like this project, please <a href="../../stargazers">star it</a> 🌟
+</h3>
