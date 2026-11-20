@@ -356,6 +356,7 @@ public class MainActivity extends AppCompatActivity {
         if (!shizukuReady()) {
             setState(a, S_UNKNOWN, "Saved. Start Shizuku to apply");
             adapter.notifyDataSetChanged();
+            refreshSummary();
             updateStatus();
             Blocks.refreshTile(this);
             toast("Not applied: Shizuku isn't connected");
